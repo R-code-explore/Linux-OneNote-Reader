@@ -1,9 +1,10 @@
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QListWidget, QWidget, 
-    QVBoxLayout, QLabel, QPushButton, QTextBrowser
+    QVBoxLayout, QLabel, QPushButton
 )
 import sys
 import api
+from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -18,12 +19,12 @@ class MainWindow(QMainWindow):
         self.layout = QVBoxLayout()
         central_widget.setLayout(self.layout)
 
-        # Bouton retour
+        # Return Button
         self.btn_back = QPushButton("⬅ Retour")
         self.btn_back.clicked.connect(self.go_back)
         self.layout.addWidget(self.btn_back)
 
-        # Label d’état
+        # State label
         self.label = QLabel("Notebooks")
         self.layout.addWidget(self.label)
 
@@ -31,19 +32,19 @@ class MainWindow(QMainWindow):
         self.list_widget = QListWidget()
         self.layout.addWidget(self.list_widget)
 
-        # Zone pour contenu des pages
-        self.page_viewer = QTextBrowser()
-        self.page_viewer.setVisible(False)  # caché au départ
+        # html pages's content
+        self.page_viewer = QWebEngineView()
+        self.page_viewer.setVisible(False) # hidden on start
         self.layout.addWidget(self.page_viewer)
 
-        # Charger les notebooks
+        # Display Notebooks
         self.notebooks = api.get_notebooks()
         for nb in self.notebooks:
             self.list_widget.addItem(nb["displayName"])
 
         self.list_widget.itemDoubleClicked.connect(self.on_item_double_clicked)
 
-        # Suivi de navigation
+        # Navigation tracking
         self.history = []
         self.current_level = "notebooks"
         self.current_notebook = None
@@ -84,16 +85,18 @@ class MainWindow(QMainWindow):
             self.current_page = page
 
             self.history.append("pages")
-            html_content = api.get_page_content(page["id"])
+            raw_html = api.get_page_content(page["id"])
+            pretty_html = api.clean_onenote_html(raw_html)
 
-            # Afficher contenu HTML dans le viewer
+            # Better content display ( not working yet )
             self.page_viewer.setVisible(True)
-            self.page_viewer.setHtml(html_content)
+            self.page_viewer.setHtml(pretty_html)
 
-            # Cacher la liste quand on lit une page
+            # Hidden lists while page reading
             self.list_widget.setVisible(False)
             self.label.setText(f"Lecture : {page['title']}")
             self.current_level = "page_content"
+
 
     def go_back(self):
         if not self.history:
@@ -102,6 +105,10 @@ class MainWindow(QMainWindow):
         prev_level = self.history.pop()
 
         if prev_level == "notebooks":
+            self.page_viewer.setVisible(False)
+            self.page_viewer.setHtml("")
+            self.list_widget.setVisible(True)
+
             self.list_widget.clear()
             for nb in self.notebooks:
                 self.list_widget.addItem(nb["displayName"])
@@ -109,6 +116,10 @@ class MainWindow(QMainWindow):
             self.current_level = "notebooks"
 
         elif prev_level == "sections":
+            self.page_viewer.setVisible(False)
+            self.page_viewer.setHtml("")
+            self.list_widget.setVisible(True)
+
             self.list_widget.clear()
             for sec in self.sections:
                 self.list_widget.addItem(sec["displayName"])
@@ -116,6 +127,10 @@ class MainWindow(QMainWindow):
             self.current_level = "sections"
 
         elif prev_level == "pages":
+            self.page_viewer.setVisible(False)
+            self.page_viewer.setHtml("")
+            self.list_widget.setVisible(True)
+
             self.list_widget.clear()
             for pg in self.pages:
                 self.list_widget.addItem(pg["title"])
@@ -124,7 +139,9 @@ class MainWindow(QMainWindow):
 
         elif prev_level == "page_content":
             self.page_viewer.setVisible(False)
+            self.page_viewer.setHtml("")  # cleaner
             self.list_widget.setVisible(True)
+
             self.label.setText(f"Pages de {self.current_section['displayName']}")
             self.current_level = "pages"
 

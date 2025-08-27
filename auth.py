@@ -1,33 +1,54 @@
+#Old login methond## CLIENT_ID = "YOUR_CLIENT_ID"
+#TENANT_ID = "YOUR_TENANT_ID"
+#AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
+#SCOPES = ["Notes.ReadWrite.All"]
 import msal
+import os
+import atexit
+import json
 
-CLIENT_ID = "YOUR CLIENT ID"
-TENANT_ID = "YOUR TENANT ID"
-AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
+CLIENT_ID = "YOUR_CLIENT_ID"
+AUTHORITY = "https://login.microsoftonline.com/common"
 SCOPES = ["Notes.ReadWrite.All"]
 
-_app = msal.PublicClientApplication(CLIENT_ID, authority=AUTHORITY)
+CACHE_FILE = "token_cache.bin"
 
-_token_cache = None
+
+def load_cache():
+    cache = msal.SerializableTokenCache()
+    if os.path.exists(CACHE_FILE):
+        cache.deserialize(open(CACHE_FILE, "r").read())
+    return cache
+
+
+def save_cache(cache):
+    if cache.has_state_changed:
+        with open(CACHE_FILE, "w") as f:
+            f.write(cache.serialize())
+
 
 def get_token():
-    global _token_cache
-    if _token_cache:
-        return _token_cache
+    cache = load_cache()
+    app = msal.PublicClientApplication(
+        CLIENT_ID, authority=AUTHORITY, token_cache=cache
+    )
 
-    accounts = _app.get_accounts()
-    result = None
+    accounts = app.get_accounts()
     if accounts:
-        result = _app.acquire_token_silent(SCOPES, account=accounts[0])
+        result = app.acquire_token_silent(SCOPES, account=accounts[0])
+        if result:
+            save_cache(cache)
+            return result["access_token"]
 
-    if not result:
-        flow = _app.initiate_device_flow(scopes=SCOPES)
-        if "user_code" not in flow:
-            raise ValueError("Erreur device flow")
-        print(flow["message"])
-        result = _app.acquire_token_by_device_flow(flow)
+    flow = app.initiate_device_flow(scopes=SCOPES)
+    if "user_code" not in flow:
+        raise Exception("Device flow initiation failed")
 
+    print(f"To sign in, use a web browser to open {flow['verification_uri']} and enter the code {flow['user_code']}")
+
+    result = app.acquire_token_by_device_flow(flow)
     if "access_token" in result:
-        _token_cache = result["access_token"]
-        return _token_cache
+        save_cache(cache)
+        return result["access_token"]
     else:
-        raise Exception("Erreur auth: " + str(result))
+        raise Exception("Authentication failed: %s" % json.dumps(result, indent=2))
